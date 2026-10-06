@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SFT Student Portal - Marks & Progress Tracker</title>
+
+<!-- Mobile App Icons & PWA Web App Meta Tags -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SFT Portal">
+<meta name="theme-color" content="#0c4a6e">
+
+<!-- Web App Manifest Dynamic Generation -->
+<link id="manifestLink" rel="manifest" href="data:application/manifest+json,{}">
+
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Chart.js Script -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- FontAwesome Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<script>
+  const dynamicManifest = {
+    "name": "SFT Student Portal",
+    "short_name": "SFT Portal",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0c4a6e",
+    "theme_color": "#0c4a6e",
+    "icons": [
+      {
+        "src": "https://cdn-icons-png.flaticon.com/512/3135/3135755.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  };
+  const stringManifest = JSON.stringify(dynamicManifest);
+  const blob = new Blob([stringManifest], {type: 'application/json'});
+  const manifestURL = URL.createObjectURL(blob);
+  document.getElementById('manifestLink').setAttribute('href', manifestURL);
+
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            50: '#f0f7ff',
+            100: '#e0effe',
+            500: '#0284c7',
+            800: '#075985',
+            900: '#0c4a6e',
+          }
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  .grade-A { color: #15803d; font-weight: 700; }
+  .grade-B { color: #1d4ed8; font-weight: 700; }
+  .grade-C { color: #0f766e; font-weight: 700; }
+  .grade-S { color: #c2410c; font-weight: 700; }
+  .grade-F { color: #b91c1c; font-weight: 700; }
+</style>
+</head>
+
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-12 select-none">
+
+<!-- Top Navigation Bar -->
+<header class="bg-brand-900 text-white shadow-lg sticky top-0 z-40">
+  <div class="max-w-4xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+    <div class="flex items-center space-x-3">
+      <i class="fa-solid fa-graduation-cap text-3xl text-cyan-400"></i>
+      <div>
+        <h1 class="text-xl font-bold tracking-wide">SFT Student Portal</h1>
+        <p class="text-[10px] text-cyan-300 font-semibold uppercase tracking-wider">Student Marks & Performance</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-2">
+      <button id="pwaInstallBtn" onclick="installApp()" class="hidden bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition shadow flex items-center gap-1">
+        <i class="fa-solid fa-download"></i> Install App
+      </button>
+
+      <select id="classBranch" onchange="switchBranch()" class="bg-brand-800 text-white border border-brand-500 px-3 py-1.5 rounded-lg text-xs font-semibold outline-none">
+        <option value="Matara">Matara Class</option>
+        <option value="Tangalle">Tangalle Class</option>
+      </select>
+      
+      <button onclick="fetchFromCloud(true)" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition shadow">
+        <i class="fa-solid fa-rotate"></i> Refresh
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="max-w-4xl mx-auto px-4 mt-8 space-y-6">
+
+  <!-- Search Card -->
+  <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+    <h2 class="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+      <i class="fa-solid fa-magnifying-glass text-brand-500"></i> Student Lookup
+    </h2>
+    <p class="text-xs text-slate-500 mb-4">Enter your Student ID to view your marks, rank history, and performance graph.</p>
+    
+    <div class="flex flex-col sm:flex-row gap-3">
+      <input type="text" id="searchId" placeholder="Enter Student ID (e.g. ST001)" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500">
+      <button onclick="searchStudent()" class="bg-brand-500 hover:bg-brand-800 text-white font-bold text-sm px-6 py-3 rounded-xl transition shadow flex items-center justify-center gap-2">
+        <i class="fa-solid fa-search"></i> Search
+      </button>
+      <button onclick="resetSearch()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-sm px-4 py-3 rounded-xl transition">
+        Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- Search Results Section -->
+  <div id="studentResultsContainer" class="hidden space-y-6">
+    <div id="studentDetailsCard" class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200"></div>
+
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+      <h2 class="text-md font-bold text-slate-800 mb-4 flex items-center gap-2">
+        <i class="fa-solid fa-chart-line text-brand-500"></i> Progress Graph
+      </h2>
+      <div class="relative w-full max-h-[350px]">
+        <canvas id="studentProgressChart"></canvas>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+      <h2 class="text-md font-bold text-slate-800 mb-4 flex items-center gap-2">
+        <i class="fa-solid fa-list-check text-brand-500"></i> Test Records
+      </h2>
+      <div id="marksList" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <div id="emptyState" class="bg-white rounded-2xl p-8 text-center border border-slate-200 shadow-sm">
+    <div class="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-3 text-brand-500">
+      <i class="fa-solid fa-user-graduate text-2xl"></i>
+    </div>
+    <h3 class="text-md font-bold text-slate-800">No Student Selected</h3>
+    <p class="text-xs text-slate-500 mt-1">Please enter your Student ID above and click Search to check your performance.</p>
+  </div>
+
+</div>
+
+<script>
+let deferredPrompt;
+const installBtn = document.getElementById('pwaInstallBtn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.classList.remove('hidden');
+});
+
+function installApp() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        installBtn.classList.add('hidden');
+      }
+      deferredPrompt = null;
+    });
+  }
+}
+
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwQqAKcOylRQd_WzcyEDmBuUDj4UCXMJhYk7o7tJ_xk5rhsads9Og0psssaOh6ubWP/exec";
+
+let currentBranch = localStorage.getItem("sftCurrentBranch") || "Matara";
+let data = JSON.parse(localStorage.getItem(`sftMarksData_${currentBranch}`)) || [];
+let studentMap = JSON.parse(localStorage.getItem(`sftStudentMap_${currentBranch}`)) || {};
+
+let chartInstance = null;
+document.getElementById("classBranch").value = currentBranch;
+
+function getLevel(mark) {
+  if (mark === "Absent" || mark === null || mark === undefined || mark === "") return "F";
+  mark = Number(mark);
+  if (mark >= 75) return "A";
+  if (mark >= 65) return "B";
+  if (mark >= 55) return "C";
+  if (mark >= 35) return "S";
+  return "F";
+}
+
+function parseTestNum(str) {
+  if (!str) return 0;
+  let num = parseInt(str.toString().replace(/[^0-9]/g, ''));
+  return isNaN(num) ? 0 : num;
+}
+
+function deduplicate(list) {
+  const map = new Map();
+  list.forEach(item => {
+    if (!item || !item.id) return;
+    const cleanId = item.id.toString().trim().toUpperCase();
+    let cleanWeek = (item.week || "").toString().trim();
+    if (cleanWeek.startsWith("Week ")) {
+      cleanWeek = cleanWeek.replace("Week ", "Test ");
+    }
+    const key = `${cleanId}_${cleanWeek}`;
+    map.set(key, {
+      ...item,
+      id: cleanId,
+      week: cleanWeek,
+      mobile: item.mobile || "",
+      grade: getLevel(item.marks)
+    });
+  });
+  return Array.from(map.values());
+}
+
+data = deduplicate(data);
+
+function calculateRanks() {
+  const weeksMap = {};
+  data.forEach(item => {
+    if (!weeksMap[item.week]) weeksMap[item.week] = [];
+    weeksMap[item.week].push(item);
+  });
+
+  Object.keys(weeksMap).forEach(week => {
+    const sorted = [...weeksMap[week]].sort((a, b) => {
+      let markA = (a.marks === "Absent" || a.marks === "") ? -1 : Number(a.marks);
+      let markB = (b.marks === "Absent" || b.marks === "") ? -1 : Number(b.marks);
+      return markB - markA;
+    });
+
+    sorted.forEach((item, index) => {
+      let markCur = (item.marks === "Absent" || item.marks === "") ? -1 : Number(item.marks);
+      let markPrev = index > 0 ? ((sorted[index - 1].marks === "Absent" || sorted[index - 1].marks === "") ? -1 : Number(sorted[index - 1].marks)) : null;
+
+      if (index > 0 && markCur === markPrev) {
+        item.rank = sorted[index - 1].rank;
+      } else {
+        item.rank = index + 1;
+      }
+      item.grade = getLevel(item.marks);
+    });
+  });
+}
+
+// Fixed fetch function using cors mode and fallback handling
+async function fetchFromCloud(showAlert = false) {
+  if (!SCRIPT_URL) return;
+
+  try {
+    let url = `${SCRIPT_URL}?action=fetchData&branch=${encodeURIComponent(currentBranch)}`;
+    
+    // Using standard fetch with proper error handling
+    let res = await fetch(url, { method: "GET", mode: "cors" });
+    let result = await res.json();
+    
+    if(result.status === "success") {
+      let cloudData = result.dataList || [];
+      data = deduplicate(cloudData);
+
+      data.forEach(item => {
+        if(item.id) {
+          const key = item.id.toString().trim().toUpperCase();
+          if (typeof studentMap[key] === "object") {
+            if (item.name) studentMap[key].name = item.name;
+            if (item.mobile) studentMap[key].mobile = item.mobile;
+          } else {
+            studentMap[key] = {
+              name: item.name || (typeof studentMap[key] === "string" ? studentMap[key] : ""),
+              mobile: item.mobile || ""
+            };
+          }
+        }
+      });
+
+      localStorage.setItem(`sftMarksData_${currentBranch}`, JSON.stringify(data));
+      localStorage.setItem(`sftStudentMap_${currentBranch}`, JSON.stringify(studentMap));
+      
+      calculateRanks();
+      const currentSearch = document.getElementById("searchId").value.trim();
+      if(currentSearch) searchStudent();
+      
+      if(showAlert) {
+        alert("Data successfully refreshed from cloud!");
+      }
+    } else {
+      if(showAlert) alert("Cloud returned an error status.");
+    }
+  } catch(e) {
+    console.error("Fetch connection error:", e);
+    // Fallback: If network fetch fails, load from local storage so the app still works offline/locally
+    let cachedData = localStorage.getItem(`sftMarksData_${currentBranch}`);
+    if (cachedData) {
+      data = deduplicate(JSON.parse(cachedData));
+      calculateRanks();
+      if(showAlert) {
+        alert("Could not connect to cloud server, loaded cached local data instead.");
+      }
+    } else {
+      if(showAlert) {
+        alert("Connection failed and no local data found. Please check internet connection.");
+      }
+    }
+  }
+}
+
+function switchBranch() {
+  currentBranch = document.getElementById("classBranch").value;
+  localStorage.setItem("sftCurrentBranch", currentBranch);
+  
+  data = JSON.parse(localStorage.getItem(`sftMarksData_${currentBranch}`)) || [];
+  data = deduplicate(data);
+  studentMap = JSON.parse(localStorage.getItem(`sftStudentMap_${currentBranch}`)) || {};
+
+  resetSearch();
+  fetchFromCloud();
+}
+
+function searchStudent() {
+  const searchId = document.getElementById("searchId").value.trim().toUpperCase();
+  const resultsContainer = document.getElementById("studentResultsContainer");
+  const emptyState = document.getElementById("emptyState");
+
+  if (!searchId) {
+    alert("Please enter a valid Student ID");
+    return;
+  }
+
+  calculateRanks();
+
+  const filtered = data.filter(item => item.id && item.id.toString().trim().toUpperCase() === searchId);
+  
+  if (filtered.length === 0) {
+    emptyState.classList.remove("hidden");
+    resultsContainer.classList.add("hidden");
+    alert(`No records found for Student ID: ${searchId}`);
+    return;
+  }
+
+  emptyState.classList.add("hidden");
+  resultsContainer.classList.remove("hidden");
+
+  filtered.sort((a,b) => parseTestNum(a.week) - parseTestNum(b.week));
+
+  let totalMarks = 0;
+  let validTestsCount = 0;
+  let studentName = filtered[0].name || "N/A";
+
+  filtered.forEach(item => {
+    if (typeof item.marks === "number") {
+      totalMarks += item.marks;
+      validTestsCount++;
+    }
+  });
+
+  let avg = validTestsCount > 0 ? (totalMarks / validTestsCount).toFixed(1) : "0.0";
+
+  document.getElementById("studentDetailsCard").innerHTML = `
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h2 class="text-xl font-bold text-slate-800">${escapeHTML(studentName)}</h2>
+        <p class="text-xs text-slate-500 font-semibold mt-0.5">ID: <span class="text-brand-800 font-bold">${searchId}</span> | Branch: ${currentBranch}</p>
+      </div>
+      <div class="flex gap-3">
+        <div class="bg-brand-50 border border-brand-100 p-2.5 rounded-xl text-center">
+          <p class="text-[10px] text-brand-800 font-bold uppercase">Total Tests</p>
+          <p class="text-lg font-extrabold text-brand-900">${filtered.length}</p>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl text-center">
+          <p class="text-[10px] text-emerald-800 font-bold uppercase">Average Score</p>
+          <p class="text-lg font-extrabold text-emerald-700">${avg}</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let listHtml = "";
+  filtered.forEach(item => {
+    let markVal = item.marks === "Absent" ? "Absent" : `${item.marks} Marks`;
+    listHtml += `
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs shadow-sm">
+        <div>
+          <span class="font-bold text-brand-800 text-sm">${item.week}</span>
+          <span class="ml-2 grade-${getLevel(item.marks)}">(${getLevel(item.marks)})</span>
+        </div>
+        <div class="text-right">
+          <span class="font-bold text-slate-800 text-sm">${markVal}</span>
+          <span class="ml-3 text-slate-500 font-bold bg-white px-2 py-1 rounded border border-slate-200">Rank: #${item.rank || 'N/A'}</span>
+        </div>
+      </div>`;
+  });
+  document.getElementById("marksList").innerHTML = listHtml;
+
+  renderChart(filtered);
+}
+
+function renderChart(studentData) {
+  const ctx = document.getElementById("studentProgressChart").getContext("2d");
+
+  const labels = studentData.map(x => x.week);
+  const marks = studentData.map(x => (x.marks === "Absent" ? 0 : x.marks));
+
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+
+  chartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "Marks",
+        data: marks,
+        borderColor: "#0284c7",
+        backgroundColor: "rgba(2, 132, 199, 0.1)",
+        borderWidth: 3,
+        pointBackgroundColor: "#075985",
+        pointRadius: 5,
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 100, ticks: { stepSize: 20 } }
+      },
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+}
+
+function resetSearch() {
+  document.getElementById("searchId").value = "";
+  document.getElementById("studentResultsContainer").classList.add("hidden");
+  document.getElementById("emptyState").classList.remove("hidden");
+}
+
+function escapeHTML(text) {
+  return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  fetchFromCloud(false);
+});
+</script>
+
+</body>
+</html>
