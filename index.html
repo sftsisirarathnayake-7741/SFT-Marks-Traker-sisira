@@ -109,8 +109,8 @@
     <p class="text-xs text-slate-500 mb-4">Enter your Student ID to view your marks, rank history, and performance graph.</p>
     
     <div class="flex flex-col sm:flex-row gap-3">
-      <input type="text" id="searchId" placeholder="Enter Student ID (e.g. ST001)" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500">
-      <button onclick="searchStudent()" class="bg-brand-500 hover:bg-brand-800 text-white font-bold text-sm px-6 py-3 rounded-xl transition shadow flex items-center justify-center gap-2">
+      <input type="text" id="searchId" placeholder="Enter Student ID (e.g. ST001)" onkeydown="if(event.key==='Enter')searchStudent()" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500">
+      <button id="searchBtn" onclick="searchStudent()" class="bg-brand-500 hover:bg-brand-800 text-white font-bold text-sm px-6 py-3 rounded-xl transition shadow flex items-center justify-center gap-2">
         <i class="fa-solid fa-search"></i> Search
       </button>
       <button onclick="resetSearch()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-sm px-4 py-3 rounded-xl transition">
@@ -175,9 +175,6 @@ function installApp() {
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwQqAKcOylRQd_WzcyEDmBuUDj4UCXMJhYk7o7tJ_xk5rhsads9Og0psssaOh6ubWP/exec";
 
 let currentBranch = localStorage.getItem("sftCurrentBranch") || "Matara";
-let data = JSON.parse(localStorage.getItem(`sftMarksData_${currentBranch}`)) || [];
-let studentMap = JSON.parse(localStorage.getItem(`sftStudentMap_${currentBranch}`)) || {};
-
 let chartInstance = null;
 document.getElementById("classBranch").value = currentBranch;
 
@@ -197,131 +194,28 @@ function parseTestNum(str) {
   return isNaN(num) ? 0 : num;
 }
 
-function deduplicate(list) {
-  const map = new Map();
-  list.forEach(item => {
-    if (!item || !item.id) return;
-    const cleanId = item.id.toString().trim().toUpperCase();
-    let cleanWeek = (item.week || "").toString().trim();
-    if (cleanWeek.startsWith("Week ")) {
-      cleanWeek = cleanWeek.replace("Week ", "Test ");
-    }
-    const key = `${cleanId}_${cleanWeek}`;
-    map.set(key, {
-      ...item,
-      id: cleanId,
-      week: cleanWeek,
-      mobile: item.mobile || "",
-      grade: getLevel(item.marks)
-    });
-  });
-  return Array.from(map.values());
-}
-
-data = deduplicate(data);
-
-function calculateRanks() {
-  const weeksMap = {};
-  data.forEach(item => {
-    if (!weeksMap[item.week]) weeksMap[item.week] = [];
-    weeksMap[item.week].push(item);
-  });
-
-  Object.keys(weeksMap).forEach(week => {
-    const sorted = [...weeksMap[week]].sort((a, b) => {
-      let markA = (a.marks === "Absent" || a.marks === "") ? -1 : Number(a.marks);
-      let markB = (b.marks === "Absent" || b.marks === "") ? -1 : Number(b.marks);
-      return markB - markA;
-    });
-
-    sorted.forEach((item, index) => {
-      let markCur = (item.marks === "Absent" || item.marks === "") ? -1 : Number(item.marks);
-      let markPrev = index > 0 ? ((sorted[index - 1].marks === "Absent" || sorted[index - 1].marks === "") ? -1 : Number(sorted[index - 1].marks)) : null;
-
-      if (index > 0 && markCur === markPrev) {
-        item.rank = sorted[index - 1].rank;
-      } else {
-        item.rank = index + 1;
-      }
-      item.grade = getLevel(item.marks);
-    });
-  });
-}
-
-// Fixed fetch function using cors mode and fallback handling
-async function fetchFromCloud(showAlert = false) {
-  if (!SCRIPT_URL) return;
-
-  try {
-    let url = `${SCRIPT_URL}?action=fetchData&branch=${encodeURIComponent(currentBranch)}`;
-    
-    // Using standard fetch with proper error handling
-    let res = await fetch(url, { method: "GET", mode: "cors" });
-    let result = await res.json();
-    
-    if(result.status === "success") {
-      let cloudData = result.dataList || [];
-      data = deduplicate(cloudData);
-
-      data.forEach(item => {
-        if(item.id) {
-          const key = item.id.toString().trim().toUpperCase();
-          if (typeof studentMap[key] === "object") {
-            if (item.name) studentMap[key].name = item.name;
-            if (item.mobile) studentMap[key].mobile = item.mobile;
-          } else {
-            studentMap[key] = {
-              name: item.name || (typeof studentMap[key] === "string" ? studentMap[key] : ""),
-              mobile: item.mobile || ""
-            };
-          }
-        }
-      });
-
-      localStorage.setItem(`sftMarksData_${currentBranch}`, JSON.stringify(data));
-      localStorage.setItem(`sftStudentMap_${currentBranch}`, JSON.stringify(studentMap));
-      
-      calculateRanks();
-      const currentSearch = document.getElementById("searchId").value.trim();
-      if(currentSearch) searchStudent();
-      
-      if(showAlert) {
-        alert("Data successfully refreshed from cloud!");
-      }
-    } else {
-      if(showAlert) alert("Cloud returned an error status.");
-    }
-  } catch(e) {
-    console.error("Fetch connection error:", e);
-    // Fallback: If network fetch fails, load from local storage so the app still works offline/locally
-    let cachedData = localStorage.getItem(`sftMarksData_${currentBranch}`);
-    if (cachedData) {
-      data = deduplicate(JSON.parse(cachedData));
-      calculateRanks();
-      if(showAlert) {
-        alert("Could not connect to cloud server, loaded cached local data instead.");
-      }
-    } else {
-      if(showAlert) {
-        alert("Connection failed and no local data found. Please check internet connection.");
-      }
-    }
-  }
+// Refresh button: search again for the same Student ID
+function fetchFromCloud(showAlert = false) {
+  const currentSearch = document.getElementById("searchId").value.trim();
+  if (currentSearch) searchStudent();
 }
 
 function switchBranch() {
   currentBranch = document.getElementById("classBranch").value;
   localStorage.setItem("sftCurrentBranch", currentBranch);
-  
-  data = JSON.parse(localStorage.getItem(`sftMarksData_${currentBranch}`)) || [];
-  data = deduplicate(data);
-  studentMap = JSON.parse(localStorage.getItem(`sftStudentMap_${currentBranch}`)) || {};
-
   resetSearch();
-  fetchFromCloud();
 }
 
-function searchStudent() {
+function setSearching(on) {
+  const btn = document.getElementById("searchBtn");
+  btn.disabled = on;
+  btn.innerHTML = on
+    ? '<i class="fa-solid fa-spinner fa-spin"></i> Searching...'
+    : '<i class="fa-solid fa-search"></i> Search';
+}
+
+// Asks the server for this one student's marks only
+async function searchStudent() {
   const searchId = document.getElementById("searchId").value.trim().toUpperCase();
   const resultsContainer = document.getElementById("studentResultsContainer");
   const emptyState = document.getElementById("emptyState");
@@ -331,10 +225,22 @@ function searchStudent() {
     return;
   }
 
-  calculateRanks();
+  setSearching(true);
+  let filtered = [];
+  try {
+    const url = `${SCRIPT_URL}?action=studentLookup&branch=${encodeURIComponent(currentBranch)}&id=${encodeURIComponent(searchId)}`;
+    const res = await fetch(url);
+    const result = await res.json();
+    if (!result || result.status !== "success") throw new Error(result ? result.message : "Error");
+    filtered = result.records || [];
+  } catch (e) {
+    console.error("Cloud Error:", e);
+    alert("Could not connect to the server. Please check your internet connection and try again.");
+    return;
+  } finally {
+    setSearching(false);
+  }
 
-  const filtered = data.filter(item => item.id && item.id.toString().trim().toUpperCase() === searchId);
-  
   if (filtered.length === 0) {
     emptyState.classList.remove("hidden");
     resultsContainer.classList.add("hidden");
@@ -350,6 +256,7 @@ function searchStudent() {
   let totalMarks = 0;
   let validTestsCount = 0;
   let studentName = filtered[0].name || "N/A";
+  let school = (filtered.find(x => x.school) || {}).school || "";
 
   filtered.forEach(item => {
     if (typeof item.marks === "number") {
@@ -364,7 +271,8 @@ function searchStudent() {
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
       <div>
         <h2 class="text-xl font-bold text-slate-800">${escapeHTML(studentName)}</h2>
-        <p class="text-xs text-slate-500 font-semibold mt-0.5">ID: <span class="text-brand-800 font-bold">${searchId}</span> | Branch: ${currentBranch}</p>
+        <p class="text-xs text-slate-500 font-semibold mt-0.5">ID: <span class="text-brand-800 font-bold">${escapeHTML(searchId)}</span> | Branch: ${currentBranch}</p>
+        ${school ? `<p class="text-xs text-slate-500 font-semibold mt-0.5">School: <span class="text-brand-800 font-bold">${escapeHTML(school)}</span></p>` : ""}
       </div>
       <div class="flex gap-3">
         <div class="bg-brand-50 border border-brand-100 p-2.5 rounded-xl text-center">
@@ -385,12 +293,12 @@ function searchStudent() {
     listHtml += `
       <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs shadow-sm">
         <div>
-          <span class="font-bold text-brand-800 text-sm">${item.week}</span>
+          <span class="font-bold text-brand-800 text-sm">${escapeHTML(item.week)}</span>
           <span class="ml-2 grade-${getLevel(item.marks)}">(${getLevel(item.marks)})</span>
         </div>
         <div class="text-right">
           <span class="font-bold text-slate-800 text-sm">${markVal}</span>
-          <span class="ml-3 text-slate-500 font-bold bg-white px-2 py-1 rounded border border-slate-200">Rank: #${item.rank || 'N/A'}</span>
+          <span class="ml-3 text-slate-500 font-bold bg-white px-2 py-1 rounded border border-slate-200">Rank: ${item.rank ? '#' + item.rank : '-'}</span>
         </div>
       </div>`;
   });
@@ -448,9 +356,6 @@ function escapeHTML(text) {
   return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  fetchFromCloud(false);
-});
 </script>
 
 </body>
